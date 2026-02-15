@@ -45,6 +45,7 @@ const animationTimeline = () => {
       {
         opacity: 0,
         y: 10,
+        display: "none",
       },
       "+=2.5"
     )
@@ -181,6 +182,10 @@ const animationTimeline = () => {
       },
       0.2
     )
+    .add(() => {
+        document.body.classList.add("allow-scroll");
+        document.documentElement.classList.add("allow-scroll");
+    })
     .from(
       ".girl-dp",
       0.5,
@@ -254,8 +259,58 @@ const animationTimeline = () => {
       opacity: 0,
       y: 30,
       zIndex: "-1",
+    }, "+=10")
+    .add(() => {
+        document.body.classList.remove("allow-scroll");
+        document.documentElement.classList.remove("allow-scroll");
+        window.scrollTo(0, 0); // Jumps back to top for the final video
     })
-    .staggerFrom(".nine p", 1, ideaTextTrans, 1.2)
+    .add(() => { 
+      const nineZone = document.querySelector(".nine");
+      const vid = document.getElementById("backgroundVideo");
+      const replayText = document.getElementById("replay");
+
+      // Ensure the viewport is at the top so the video is fully visible
+      window.scrollTo(0, 0);
+
+      // 1. Make the final container visible
+      TweenMax.set(nineZone, {visibility: "visible", opacity: 1});
+
+      if (vid) {
+        vid.currentTime = 0;
+
+        // Try to play with sound. If browser blocks autoplay with sound,
+        // fall back to muted autoplay and show a lightweight notice
+        // that lets the user enable sound.
+        const tryPlay = () => {
+          const p = vid.play();
+          if (p !== undefined) {
+            p.then(() => {
+              // playing
+            }).catch((err) => {
+              // Autoplay with sound blocked -> try muted autoplay
+              console.warn('Autoplay with sound blocked, attempting muted autoplay', err);
+              vid.muted = true;
+              vid.play().then(() => {
+                // show a visible, concise notice so user can enable audio
+                showEnableSoundNotice(nineZone, vid);
+              }).catch((err2) => {
+                console.error('Muted autoplay also failed', err2);
+              });
+            });
+          }
+        };
+
+        tryPlay();
+
+        vid.onended = () => {
+          replayText.style.display = "block";
+          TweenMax.from(replayText, 1, {opacity: 0, y: 10});
+        };
+      }
+    })
+    // Remove the staggerFrom for ".nine p" here if you want ONLY the video 
+    // to show up first, or keep it if you want the "last-smile" to appear.
     .to(
       ".last-smile",
       0.5,
@@ -271,8 +326,19 @@ const animationTimeline = () => {
   // Restart Animation on click
   const replyBtn = document.getElementById("replay");
   replyBtn.addEventListener("click", () => {
+    const vid = document.getElementById("backgroundVideo");
+    if(vid) vid.pause();
+    
+    // Hide the button again for the next run
+    replyBtn.style.display = "none";
+    
+    // Ensure we're at top when restarting
+    window.scrollTo(0,0);
+    
     tl.restart();
   });
+  
+
 };
 
 // Import the data to customize and insert them into page
@@ -303,3 +369,41 @@ const resolveFetch = () => {
 };
 
 resolveFetch().then(animationTimeline());
+
+// Helper: show a small overlay in the `.nine` section to let the user enable sound
+function showEnableSoundNotice(nineZone, vid) {
+  if (!nineZone) return;
+  // avoid creating multiple notices
+  if (document.getElementById('enableSoundNotice')) return;
+
+  const notice = document.createElement('div');
+  notice.id = 'enableSoundNotice';
+  notice.innerText = 'Tap to enable sound';
+  Object.assign(notice.style, {
+    position: 'fixed',
+    left: '50%',
+    bottom: '24px',
+    transform: 'translateX(-50%)',
+    background: 'rgba(0,0,0,0.6)',
+    color: '#fff',
+    padding: '10px 14px',
+    borderRadius: '6px',
+    zIndex: 10001,
+    cursor: 'pointer',
+    fontFamily: 'sans-serif',
+    fontSize: '14px',
+  });
+
+  notice.addEventListener('click', () => {
+    try {
+      vid.muted = false;
+      // attempt to play with sound now that user interacted
+      vid.play().catch(e => console.warn('Play after user gesture failed', e));
+    } catch (e) {
+      console.warn(e);
+    }
+    notice.remove();
+  });
+
+  nineZone.appendChild(notice);
+}
